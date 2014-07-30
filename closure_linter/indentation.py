@@ -93,14 +93,15 @@ class TokenInfo(object):
     self.is_transient = not is_block and token.type not in (
         Type.START_PAREN, Type.START_PARAMETERS)
     self.line_number = token.line_number
+    self.in_use_as_hard_stop = False
 
   def __repr__(self):
     result = '\n  %s' % self.token
     if self.overridden_by:
       result = '%s OVERRIDDEN [by "%s"]' % (
           result, self.overridden_by.token.string)
-    result += ' {is_block: %s, is_transient: %s}' % (
-        self.is_block, self.is_transient)
+    result += ' {is_block: %s, is_transient: %s, overridden: %s}' % (
+        self.is_block, self.is_transient, self.was_overridden)
     return result
 
 
@@ -307,8 +308,6 @@ class IndentationRules(object):
     elif token.IsAssignment():
       self._Add(TokenInfo(token))
 
-    if len(indentation_errors) > 0:
-      print "Errors: {}".format(indentation_errors)
     return indentation_errors
 
   def _AddToEach(self, original, amount):
@@ -374,6 +373,15 @@ class IndentationRules(object):
       # Handle normal additive indentation tokens.
       if not token_info.overridden_by: # and token.string != 'return':
         if token_info.is_block:
+          if token_info.token.IsType(Type.START_BLOCK):
+            next_code = tokenutil.GetNextCodeToken(token_info.token)
+            prev_code = tokenutil.GetPreviousCodeToken(token_info.token)
+            if ((not next_code or next_code.line_number != token_info.token.line_number) and
+                (not prev_code or prev_code.line_number != token_info.token.line_number)):
+              # The open bracket is the only token in this line. Use this as a
+              # hard stop.
+              expected = set([token.start_index])
+              decisions.append('BracketOnOwnLine(({}))'.format(token.start_index))
           expected = self._AddToEach(expected, 2)
           hard_stops = self._AddToEach(hard_stops, 2)
           hard_stop_token_info.append(token_info)
@@ -384,10 +392,11 @@ class IndentationRules(object):
           #hard_stops |= self._AddToEach(hard_stops, 4)
           decisions.append('SameContinuation+0')
           if token.IsType(Type.START_PAREN) and token.line_number != paren_start_line:
+            next_token = tokenutil.GetNextCodeToken(token)
+            hard_stop_token_info.append(token_info)
             paren_start_line = token.line_number
             expected = self._AddToEach(expected, 2)
             hard_stops = self._AddToEach(hard_stops, 2)
-            hard_stop_token_info.append(token_info)
             decisions.append('ParenOnNewLine+2')
           elif token.IsType(Type.START_PAREN):
             decisions.append('ParenOnSameLine+0')
@@ -441,10 +450,16 @@ class IndentationRules(object):
       for token_info in hard_stop_token_info:
         if token_info == last_token_info:
           break
-        token_info.was_overridden = True
-      if last_token_info.token.IsType(Type.START_PAREN) and not last_token_info.was_overridden:
+        if not token_info.in_use_as_hard_stop:
+          token_info.was_overridden = True
+      next_token = tokenutil.GetNextCodeToken(last_token_info.token)
+      if (last_token_info.token.IsType(Type.START_PAREN) and
+          not last_token_info.was_overridden and
+          next_token and
+          next_token.line_number == last_token_info.token.line_number):
         if flags.FLAGS.debug_indentation:
           print "  Using hard stop offset for {}".format(last_token_info)
+        last_token_info.in_use_as_hard_stop = True
         return set([last_token_info.token.start_index + 1])
 
     return hard_stops or set([0]) if len(expected) == 0 else  expected

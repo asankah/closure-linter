@@ -752,6 +752,7 @@ class EcmaScriptLintRules(checkerbase.LintRulesBase):
     """
     if (not token.IsFirstInLine() and token.previous.type == Type.WHITESPACE and
         last_non_space_token and
+        not last_non_space_token.IsType(Type.END_BLOCK) and
         last_non_space_token.type in Type.EXPRESSION_ENDER_TYPES):
       self._HandleError(
           errors.EXTRA_SPACE, 'Extra space before "["',

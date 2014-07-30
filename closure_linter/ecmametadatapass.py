@@ -285,6 +285,12 @@ class EcmaMetaDataPass(object):
     Returns:
       The context object of the given type that was popped.
     """
+    last = self._context
+    while last and last.type not in stop_types:
+      last = last.parent
+    if not last:
+      print "Matching context not found while unwinding till {}. Current contexts are {}".format(
+          stop_types, self._context)
     last = None
     while not last or last.type not in stop_types:
       last = self._PopContext()
@@ -374,7 +380,9 @@ class EcmaMetaDataPass(object):
       return self._PopContextType(EcmaContext.PARAMETERS)
 
     elif token_type == TokenType.START_BRACKET:
+      # END_BLOCK could signal both an end of an expression and a statement.
       if (self._last_code and
+          not self._last_code.IsType(TokenType.END_BLOCK) and
           self._last_code.type in TokenType.EXPRESSION_ENDER_TYPES):
         self._AddContext(EcmaContext.INDEX)
       else:
