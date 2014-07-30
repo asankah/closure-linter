@@ -31,6 +31,8 @@ from closure_linter import requireprovidesorter
 from closure_linter import tokenutil
 from closure_linter.common import errorhandler
 
+import traceback
+
 # Shorthand
 Token = javascripttokens.JavaScriptToken
 Type = javascripttokens.JavaScriptTokenType
@@ -87,6 +89,8 @@ class ErrorFixer(errorhandler.ErrorHandler):
     Args:
       tokens: The token or sequence of tokens changed to fix an error.
     """
+    print "Adding fix {}".format(tokens)
+    traceback.print_stack()
     self._file_fix_count += 1
     if hasattr(tokens, 'line_number'):
       self._file_changed_lines.add(tokens.line_number)
@@ -102,6 +106,9 @@ class ErrorFixer(errorhandler.ErrorHandler):
     """
     code = error.code
     token = error.token
+    print "HandleError {}, {}".format(code, token)
+    if code == -2:
+      traceback.print_stack()
 
     if code == errors.JSDOC_PREFER_QUESTION_TO_PIPE_NULL:
       iterator = token.attached_object.type_start_token

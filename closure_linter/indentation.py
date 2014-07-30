@@ -87,6 +87,7 @@ class TokenInfo(object):
     """
     self.token = token
     self.overridden_by = None
+    self.was_overridden = False
     self.is_permanent_override = False
     self.is_block = is_block
     self.is_transient = not is_block and token.type not in (
@@ -196,9 +197,8 @@ class IndentationRules(object):
     not_dot = token.string != '.'
     if is_first and flags.FLAGS.debug_indentation:
       print 'Line #%d: stack %r' % (token.line_number, stack)
-      print '  Looking at token {}'.format(token)
 
-    if is_first and  not_binary_operator and not_dot and token.type not in (
+    if is_first and token.type not in (
         Type.COMMENT, Type.DOC_PREFIX, Type.STRING_TEXT):
 
       # Ignore lines that start in JsDoc since we don't check them properly yet.
@@ -208,6 +208,9 @@ class IndentationRules(object):
       # Ignore lines with tabs since we report that already.
       expected = self._GetAllowableIndentations()
       actual = self._GetActualIndentation(token)
+
+      if flags.FLAGS.debug_indentation:
+        print 'Expected indentation: {}, Actual: {}'.format(sorted(expected), actual)
 
       # Special case comments describing else, case, and default.  Allow them
       # to outdent to the parent block.
@@ -219,7 +222,7 @@ class IndentationRules(object):
           # TODO(robbyw): This almost certainly introduces false negatives.
           expected |= self._AddToEach(expected, -2)
 
-      if actual >= 0 and actual not in expected:
+      if actual != min(expected):
         expected = sorted(expected)
         indentation_errors.append([
             errors.WRONG_INDENTATION,
@@ -304,6 +307,8 @@ class IndentationRules(object):
     elif token.IsAssignment():
       self._Add(TokenInfo(token))
 
+    if len(indentation_errors) > 0:
+      print "Errors: {}".format(indentation_errors)
     return indentation_errors
 
   def _AddToEach(self, original, amount):
@@ -347,6 +352,7 @@ class IndentationRules(object):
     """
     expected = set([0])
     hard_stops = set([])
+    decisions = []
 
     # Whether the tokens are still in the same continuation, meaning additional
     # indentation is optional.  As an example:
@@ -356,22 +362,42 @@ class IndentationRules(object):
     # The second '+' does not add any required indentation.
     in_same_continuation = False
 
+    # Opening parenthesis are allowed to override previous parenthesis on the
+    # same line.
+    paren_start_line = -1
+
+    hard_stop_token_info = []
+
     for token_info in self._stack:
       token = token_info.token
 
       # Handle normal additive indentation tokens.
-      if not token_info.overridden_by and token.string != 'return':
+      if not token_info.overridden_by: # and token.string != 'return':
         if token_info.is_block:
           expected = self._AddToEach(expected, 2)
           hard_stops = self._AddToEach(hard_stops, 2)
+          hard_stop_token_info.append(token_info)
           in_same_continuation = False
+          decisions.append('Block+2')
         elif in_same_continuation:
-          expected |= self._AddToEach(expected, 4)
-          hard_stops |= self._AddToEach(hard_stops, 4)
+          #expected |= self._AddToEach(expected, 4)
+          #hard_stops |= self._AddToEach(hard_stops, 4)
+          decisions.append('SameContinuation+0')
+          if token.IsType(Type.START_PAREN) and token.line_number != paren_start_line:
+            paren_start_line = token.line_number
+            expected = self._AddToEach(expected, 2)
+            hard_stops = self._AddToEach(hard_stops, 2)
+            hard_stop_token_info.append(token_info)
+            decisions.append('ParenOnNewLine+2')
+          elif token.IsType(Type.START_PAREN):
+            decisions.append('ParenOnSameLine+0')
         else:
-          expected = self._AddToEach(expected, 4)
-          hard_stops |= self._AddToEach(hard_stops, 4)
+          hard_stop_token_info.append(token_info)
+          hard_stops |= self._AddToEach(hard_stops, 2)
+          expected = self._AddToEach(expected, 2)
           in_same_continuation = True
+          paren_start_line = token.line_number if token.IsType(Type.START_PAREN) else -1
+          decisions.append('NewContinuation+2')
 
       # Handle hard stops after (, [, return, =, and ?
       if self._IsHardStop(token):
@@ -379,26 +405,49 @@ class IndentationRules(object):
                                  self._IsHardStop(
                                      token_info.overridden_by.token))
         if not override_is_hard_stop:
+          if len(hard_stop_token_info) > 0 and hard_stop_token_info[-1] !=  token_info:
+            hard_stop_token_info.append(token_info)
           start_index = token.start_index
           if token.line_number in self._start_index_offset:
             start_index += self._start_index_offset[token.line_number]
           if (token.type in (Type.START_PAREN, Type.START_PARAMETERS) and
               not token_info.overridden_by):
             hard_stops.add(start_index + 1)
+            decisions.append('Start paren({})'.format(start_index + 1))
 
           elif token.string == 'return' and not token_info.overridden_by:
             hard_stops.add(start_index + 7)
+            decisions.append('\'return\'({})'.format(start_index + 7))
 
           elif token.type == Type.START_BRACKET:
             hard_stops.add(start_index + 1)
+            decisions.append('Bracket({})'.format(start_index + 1))
 
           elif token.IsAssignment():
             hard_stops.add(start_index + len(token.string) + 1)
+            decisions.append('Assignment({})'.format(start_index + len(token.string) + 1))
 
           elif token.IsOperator('?') and not token_info.overridden_by:
             hard_stops.add(start_index + 2)
+            decisions.append('Ternary({})'.format(start_index + 2))
 
-    return (expected | hard_stops) or set([0])
+    if flags.FLAGS.debug_indentation:
+      print "Decisions: {}".format(decisions)
+
+    # If a parenthesis is the last hard stop token in a line, we use that as a
+    # preferred indent.
+    if len(hard_stop_token_info) > 0:
+      last_token_info = hard_stop_token_info[-1]
+      for token_info in hard_stop_token_info:
+        if token_info == last_token_info:
+          break
+        token_info.was_overridden = True
+      if last_token_info.token.IsType(Type.START_PAREN) and not last_token_info.was_overridden:
+        if flags.FLAGS.debug_indentation:
+          print "  Using hard stop offset for {}".format(last_token_info)
+        return set([last_token_info.token.start_index + 1])
+
+    return hard_stops or set([0]) if len(expected) == 0 else  expected
 
   def _GetActualIndentation(self, token):
     """Gets the actual indentation of the line containing the given token.
@@ -459,6 +508,22 @@ class IndentationRules(object):
       if token.type not in Type.NON_CODE_TYPES:
         return False
 
+  def _CanOverrideToken(self, first_token_info, second_token_info):
+    if (first_token_info.line_number != second_token_info.line_number):
+      return False
+
+    if not first_token_info.token.IsType(Type.START_PAREN):
+      return True
+
+    if second_token_info.token.IsType(Type.START_PAREN):
+      return True
+
+    previous_token = tokenutil.GetPreviousCodeToken(first_token_info.token)
+    if previous_token and previous_token.type in (Type.END_PAREN, Type.IDENTIFIER):
+      return False
+
+    return True
+
   def _Add(self, token_info):
     """Adds the given token info to the stack.
 
@@ -477,7 +542,7 @@ class IndentationRules(object):
         stack_info = self._stack[-index]
         stack_token = stack_info.token
 
-        if stack_info.line_number == token_info.line_number:
+        if (self._CanOverrideToken(stack_info, token_info)):
           # In general, tokens only override each other when they are on
           # the same line.
           stack_info.overridden_by = token_info
@@ -510,6 +575,7 @@ class IndentationRules(object):
           break
         index += 1
 
+    token_info.was_overridden = token_info.was_overridden or token_info.overridden_by != None
     self._stack.append(token_info)
 
   def _Pop(self):

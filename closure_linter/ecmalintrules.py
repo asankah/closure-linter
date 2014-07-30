@@ -402,7 +402,8 @@ class EcmaScriptLintRules(checkerbase.LintRulesBase):
                             token, position=Position.All(token.string))
 
     elif token_type == Type.START_PAREN:
-      if token.previous and token.previous.type == Type.KEYWORD:
+      if token.previous and token.previous.type == Type.KEYWORD and (
+          (not token.previous.previous) or token.previous.previous.string != '.'):
         self._HandleError(errors.MISSING_SPACE, 'Missing space before "("',
                           token, position=Position.AtBeginning())
       elif token.previous and token.previous.type == Type.WHITESPACE:

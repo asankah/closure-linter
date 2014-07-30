@@ -38,6 +38,9 @@ class Position(object):
     self.start = start
     self.length = length
 
+  def __repr__(self):
+    return "<Position: start:{}, length:{}>".format(self.start, self.length)
+
   def Get(self, string):
     """Returns this range of the given string.
 
