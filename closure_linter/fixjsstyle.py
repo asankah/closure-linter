@@ -19,6 +19,11 @@
 __author__ = 'robbyw@google.com (Robert Walker)'
 
 import sys
+import os
+
+closure_path = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+gflags_path = os.path.abspath(os.path.join(closure_path, 'gflags'))
+sys.path += [ closure_path, gflags_path ]
 
 import gflags as flags
 
