@@ -453,7 +453,7 @@ class IndentationRules(object):
         if not token_info.in_use_as_hard_stop:
           token_info.was_overridden = True
       next_token = tokenutil.GetNextCodeToken(last_token_info.token)
-      if (last_token_info.token.IsType(Type.START_PAREN) and
+      if (last_token_info.token.type in (Type.START_PAREN, Type.START_BRACKET) and
           not last_token_info.was_overridden and
           next_token and
           next_token.line_number == last_token_info.token.line_number):
