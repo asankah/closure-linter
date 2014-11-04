@@ -55,6 +55,9 @@ Type = javascripttokens.JavaScriptTokenType
 #    "no false positives" approach of GJsLint and build the most permissive
 #    set possible.
 
+def DebugPrint(string):
+  if flags.FLAGS.debug_indentation:
+    print string
 
 class TokenInfo(object):
   """Stores information about a token.
@@ -197,7 +200,7 @@ class IndentationRules(object):
                            token.metadata.IsUnaryOperator())
     not_dot = token.string != '.'
     if is_first and flags.FLAGS.debug_indentation:
-      print 'Line #%d: stack %r' % (token.line_number, stack)
+      print 'Line #%d:' % (token.line_number)
 
     if is_first and token.type not in (
         Type.COMMENT, Type.DOC_PREFIX, Type.STRING_TEXT):
@@ -351,7 +354,6 @@ class IndentationRules(object):
     """
     expected = set([0])
     hard_stops = set([])
-    decisions = []
 
     # Whether the tokens are still in the same continuation, meaning additional
     # indentation is optional.  As an example:
@@ -369,6 +371,7 @@ class IndentationRules(object):
 
     for token_info in self._stack:
       token = token_info.token
+      DebugPrint("  {}".format(token_info))
 
       # Handle normal additive indentation tokens.
       if not token_info.overridden_by: # and token.string != 'return':
@@ -381,32 +384,32 @@ class IndentationRules(object):
               # The open bracket is the only token in this line. Use this as a
               # hard stop.
               expected = set([token.start_index])
-              decisions.append('BracketOnOwnLine(({}))'.format(token.start_index))
+              DebugPrint('    BracketOnOwnLine(({}))'.format(token.start_index))
           expected = self._AddToEach(expected, 2)
           hard_stops = self._AddToEach(hard_stops, 2)
           hard_stop_token_info.append(token_info)
           in_same_continuation = False
-          decisions.append('Block+2')
+          DebugPrint('    Block+2')
         elif in_same_continuation:
           #expected |= self._AddToEach(expected, 4)
           #hard_stops |= self._AddToEach(hard_stops, 4)
-          decisions.append('SameContinuation+0')
+          DebugPrint('    SameContinuation+0')
           if token.IsType(Type.START_PAREN) and token.line_number != paren_start_line:
             next_token = tokenutil.GetNextCodeToken(token)
             hard_stop_token_info.append(token_info)
             paren_start_line = token.line_number
             expected = self._AddToEach(expected, 2)
             hard_stops = self._AddToEach(hard_stops, 2)
-            decisions.append('ParenOnNewLine+2')
+            DebugPrint('    ParenOnNewLine+2')
           elif token.IsType(Type.START_PAREN):
-            decisions.append('ParenOnSameLine+0')
+            DebugPrint('    ParenOnSameLine+0')
         else:
           hard_stop_token_info.append(token_info)
           hard_stops |= self._AddToEach(hard_stops, 2)
           expected = self._AddToEach(expected, 2)
           in_same_continuation = True
           paren_start_line = token.line_number if token.IsType(Type.START_PAREN) else -1
-          decisions.append('NewContinuation+2')
+          DebugPrint('    NewContinuation+2')
 
       # Handle hard stops after (, [, return, =, and ?
       if self._IsHardStop(token):
@@ -422,26 +425,23 @@ class IndentationRules(object):
           if (token.type in (Type.START_PAREN, Type.START_PARAMETERS) and
               not token_info.overridden_by):
             hard_stops.add(start_index + 1)
-            decisions.append('Start paren({})'.format(start_index + 1))
+            DebugPrint('    Start paren({})'.format(start_index + 1))
 
           elif token.string == 'return' and not token_info.overridden_by:
             hard_stops.add(start_index + 7)
-            decisions.append('\'return\'({})'.format(start_index + 7))
+            DebugPrint('    \'return\'({})'.format(start_index + 7))
 
           elif token.type == Type.START_BRACKET:
             hard_stops.add(start_index + 1)
-            decisions.append('Bracket({})'.format(start_index + 1))
+            DebugPrint('    Bracket({})'.format(start_index + 1))
 
           elif token.IsAssignment():
             hard_stops.add(start_index + len(token.string) + 1)
-            decisions.append('Assignment({})'.format(start_index + len(token.string) + 1))
+            DebugPrint('    Assignment({})'.format(start_index + len(token.string) + 1))
 
           elif token.IsOperator('?') and not token_info.overridden_by:
             hard_stops.add(start_index + 2)
-            decisions.append('Ternary({})'.format(start_index + 2))
-
-    if flags.FLAGS.debug_indentation:
-      print "Decisions: {}".format(decisions)
+            DebugPrint('    Ternary({})'.format(start_index + 2))
 
     # If a parenthesis is the last hard stop token in a line, we use that as a
     # preferred indent.
@@ -462,7 +462,7 @@ class IndentationRules(object):
         last_token_info.in_use_as_hard_stop = True
         return set([last_token_info.token.start_index + 1])
 
-    return hard_stops or set([0]) if len(expected) == 0 else  expected
+    return hard_stops or set([0]) if len(expected) == 0 else expected
 
   def _GetActualIndentation(self, token):
     """Gets the actual indentation of the line containing the given token.

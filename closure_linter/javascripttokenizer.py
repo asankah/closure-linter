@@ -371,3 +371,4 @@ class JavaScriptTokenizer(tokenizer.Tokenizer):
     """
     return javascripttokens.JavaScriptToken(string, token_type, line,
                                             line_number, values, line_number)
+
