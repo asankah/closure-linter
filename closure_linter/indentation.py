@@ -558,6 +558,8 @@ class IndentationRules(object):
         stack_token = stack_info.token
 
         if (self._CanOverrideToken(stack_info, token_info)):
+          DebugPrint('Overriding {} with {}'.format(stack_info, token_info))
+          DebugPrint('  Previous token {}'.format(stack_info.token.metadata.last_code))
           # In general, tokens only override each other when they are on
           # the same line.
           stack_info.overridden_by = token_info

@@ -303,6 +303,16 @@ class EcmaMetaDataPass(object):
       self._token.metadata.is_implied_block_close = True
       self._PopContext()
 
+  def _FixupTokenType(self):
+    token = self._token
+    last_code = self._last_code
+
+    if (token.type == TokenType.KEYWORD and
+        last_code and
+        last_code.type == TokenType.NORMAL and
+        last_code.string == '.'):
+      token.type = TokenType.IDENTIFIER
+
   def _ProcessContext(self):
     """Process the context at the current token.
 
@@ -314,6 +324,10 @@ class EcmaMetaDataPass(object):
       ParseError: When the token appears in an invalid context.
     """
     token = self._token
+
+    # Fix up token type
+    self._FixupTokenType()
+
     token_type = token.type
 
     if self._context.type in EcmaContext.BLOCK_TYPES:
