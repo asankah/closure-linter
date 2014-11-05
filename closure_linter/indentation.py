@@ -289,6 +289,12 @@ class IndentationRules(object):
             # this case.
             pass
 
+        # Don't introduce a new indentation level for a dangling '+'. This is a
+        # pretty big hack to deal with the common case of string concatenation.
+        # This could check if either of the arguments to '+' are string
+        # literals, and special case those, but I'm going to leave this as-is.
+        elif token.string == '+':
+          pass
         elif token.string != ',':
           self._Add(TokenInfo(token))
         else:
@@ -328,7 +334,7 @@ class IndentationRules(object):
   _HARD_STOP_TYPES = (Type.START_PAREN, Type.START_PARAMETERS,
                       Type.START_BRACKET)
 
-  _HARD_STOP_STRINGS = ('return', '?')
+  _HARD_STOP_STRINGS = ('return', '?', 'function')
 
   def _IsHardStop(self, token):
     """Determines if the given token can have a hard stop after it.
@@ -375,25 +381,42 @@ class IndentationRules(object):
 
       # Handle normal additive indentation tokens.
       if not token_info.overridden_by: # and token.string != 'return':
-        if token_info.is_block:
+        if token_info.in_use_as_hard_stop:
+          # An active hard stop. Use it as the only expected indentation.
+          # E.g. foo(bar,
+          #          baz(function() {
+          #              quux();
+          #            }),
+          #          xyyz);
+          # All lines after line #1 are indented relative to the position of the
+          # first hard stop '(' in line #1.
+          expected = set([token.start_index + 1])
+          DebugPrint('    ActiveHardStop({})'.format(token.start_index + 1))
+        elif token_info.is_block:
           if token_info.token.IsType(Type.START_BLOCK):
+            # A START_BLOCK on its own line automatically starts a hard stop.
+            # E.g.: foo(asdfsdf,
+            #           function()
+            #           {
+            #             bar();
+            #           });
+            # The '{' on line #3 establishes a hard stop for lines #4 and #5.
             next_code = tokenutil.GetNextCodeToken(token_info.token)
             prev_code = tokenutil.GetPreviousCodeToken(token_info.token)
             if ((not next_code or next_code.line_number != token_info.token.line_number) and
                 (not prev_code or prev_code.line_number != token_info.token.line_number)):
-              # The open bracket is the only token in this line. Use this as a
-              # hard stop.
               expected = set([token.start_index])
               DebugPrint('    BracketOnOwnLine(({}))'.format(token.start_index))
+          # Code in block is indented by 2.
           expected = self._AddToEach(expected, 2)
           hard_stops = self._AddToEach(hard_stops, 2)
           hard_stop_token_info.append(token_info)
           in_same_continuation = False
           DebugPrint('    Block+2')
         elif in_same_continuation:
-          #expected |= self._AddToEach(expected, 4)
-          #hard_stops |= self._AddToEach(hard_stops, 4)
           DebugPrint('    SameContinuation+0')
+          # Same continuation. Usually doesn't add new indentation unless
+          # there's a parenthesis involved.
           if token.IsType(Type.START_PAREN) and token.line_number != paren_start_line:
             next_token = tokenutil.GetNextCodeToken(token)
             hard_stop_token_info.append(token_info)
@@ -457,8 +480,7 @@ class IndentationRules(object):
           not last_token_info.was_overridden and
           next_token and
           next_token.line_number == last_token_info.token.line_number):
-        if flags.FLAGS.debug_indentation:
-          print "  Using hard stop offset for {}".format(last_token_info)
+        DebugPrint("  Using hard stop offset for {}".format(last_token_info))
         last_token_info.in_use_as_hard_stop = True
         return set([last_token_info.token.start_index + 1])
 

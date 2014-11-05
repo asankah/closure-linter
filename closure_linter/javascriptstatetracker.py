@@ -121,8 +121,9 @@ class JavaScriptStateTracker(statetracker.StateTracker):
       Code block type for current token.
     """
     last_code = tokenutil.SearchExcept(token, Type.NON_CODE_TYPES, reverse=True)
-    if last_code.type in (Type.END_PARAMETERS, Type.END_PAREN,
-                          Type.KEYWORD) and not last_code.IsKeyword('return'):
+    if (last_code and
+        (last_code.type in (Type.END_PARAMETERS, Type.END_PAREN,
+                          Type.KEYWORD) and not last_code.IsKeyword('return'))):
       return self.CODE
     else:
       return self.OBJECT_LITERAL

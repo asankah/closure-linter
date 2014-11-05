@@ -406,14 +406,15 @@ class EcmaMetaDataPass(object):
       return self._PopContextType(EcmaContext.INDEX, EcmaContext.ARRAY_LITERAL)
 
     elif token_type == TokenType.START_BLOCK:
-      if (self._last_code.type in (TokenType.END_PAREN,
-                                   TokenType.END_PARAMETERS) or
-          self._last_code.IsKeyword('else') or
-          self._last_code.IsKeyword('do') or
-          self._last_code.IsKeyword('try') or
-          self._last_code.IsKeyword('finally') or
-          (self._last_code.IsOperator(':') and
-           self._last_code.metadata.context.type == EcmaContext.CASE_BLOCK)):
+      if (self._last_code and
+          (self._last_code.type in (TokenType.END_PAREN,
+                                    TokenType.END_PARAMETERS) or
+           self._last_code.IsKeyword('else') or
+           self._last_code.IsKeyword('do') or
+           self._last_code.IsKeyword('try') or
+           self._last_code.IsKeyword('finally') or
+           (self._last_code.IsOperator(':') and
+            self._last_code.metadata.context.type == EcmaContext.CASE_BLOCK))):
         # else, do, try, and finally all might have no () before {.
         # Also, handle the bizzare syntax case 10: {...}.
         self._AddContext(EcmaContext.BLOCK)
